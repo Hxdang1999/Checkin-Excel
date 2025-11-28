@@ -7,7 +7,7 @@ import traceback
 class TimeAttendanceApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Tool Lọc Công - v12.0 (Name sau Last Name)")
+        self.root.title("Tool Lọc Công - v13.0 (Tự động xóa dòng thiếu Tên/ID)")
         self.root.geometry("1300x768")
         
         # Biến dữ liệu
@@ -102,7 +102,6 @@ class TimeAttendanceApp:
             self.col_time_original = next((c for c in df.columns if any(x in str(c).lower() for x in ['time', 'giờ', 'thời gian'])), None)
             self.col_last_name = next((c for c in df.columns if any(x in str(c).lower() for x in ['last name', 'họ', 'họ đệm'])), None)
             
-            # Tìm First Name tránh nhầm lẫn
             possible_names = [c for c in df.columns if any(x in str(c).lower() for x in ['first name', 'tên', 'name'])]
             self.col_first_name = None
             for c in possible_names:
@@ -132,7 +131,7 @@ class TimeAttendanceApp:
         win = tk.Toplevel(self.root); win.title("Chọn cột cần XÓA")
         win.geometry("500x600")
         
-        lbl = tk.Label(win, text="Tích vào cột muốn xóa", 
+        lbl = tk.Label(win, text="Tích vào cột bạn muốn XÓA (Ẩn đi).\n(Mặc định Ngay, Gio, Name đã được tích)", 
                        fg="red", font=("Arial", 10, "bold"), pady=10)
         lbl.pack()
 
@@ -150,13 +149,9 @@ class TimeAttendanceApp:
         
         for col in original_cols:
             display_list.append({"name": col, "is_new": False})
-            
-            # Thêm Ngay/Gio sau cột Time
             if self.col_time_original and col == self.col_time_original:
                 display_list.append({"name": "Ngay", "is_new": True})
                 display_list.append({"name": "Gio", "is_new": True})
-            
-            # --- ĐIỂM SỬA: Thêm Name sau cột LAST NAME ---
             if self.col_last_name and col == self.col_last_name:
                  display_list.append({"name": "Name", "is_new": True})
 
@@ -202,6 +197,22 @@ class TimeAttendanceApp:
             if not col_id or not self.col_time_original:
                 messagebox.showerror("Lỗi", "Không xác định được ID hoặc Cột thời gian gốc."); return
 
+            # --- TÍNH NĂNG MỚI: XÓA DÒNG THIẾU THÔNG TIN ---
+            # Xác định các cột bắt buộc phải có dữ liệu
+            required_cols = [col_id]
+            if self.col_last_name: required_cols.append(self.col_last_name)
+            if self.col_first_name: required_cols.append(self.col_first_name)
+            
+            # Đếm trước khi xóa
+            before_count = len(df)
+            
+            # Thực hiện xóa các dòng mà ID, Họ hoặc Tên bị NaN (trống)
+            df.dropna(subset=required_cols, inplace=True)
+            
+            # Đếm sau khi xóa
+            dropped_count = before_count - len(df)
+            # -----------------------------------------------
+
             # 1. Xử lý Thời gian
             df[self.col_time_original] = pd.to_datetime(df[self.col_time_original], dayfirst=True, errors='coerce')
             df.dropna(subset=[self.col_time_original], inplace=True)
@@ -216,7 +227,6 @@ class TimeAttendanceApp:
                     full_name = df[self.col_last_name].fillna('').astype(str) + " " + df[self.col_first_name].fillna('').astype(str)
                     full_name = full_name.str.strip().str.replace(r'\s+', ' ', regex=True)
                     
-                    # --- ĐIỂM SỬA: CHÈN SAU LAST NAME ---
                     idx_name = df.columns.get_loc(self.col_last_name)
                     df.insert(idx_name + 1, 'Name', full_name)
 
@@ -234,7 +244,13 @@ class TimeAttendanceApp:
             self.display_data(self.tree_right, self.filtered_df)
             
             self.status_lbl.config(text=f"Hoàn tất! Kết quả: {len(df)} dòng.")
-            messagebox.showinfo("Thông báo", "Lọc thành công")
+            
+            # Thông báo kết quả + số dòng bị xóa (nếu có)
+            msg = "Lọc thành công"
+            if dropped_count > 0:
+                msg += f"\n\n(Lưu ý: Đã tự động loại bỏ {dropped_count} dòng do thiếu ID hoặc Tên)"
+                
+            messagebox.showinfo("Thông báo", msg)
             
         except Exception as e:
             messagebox.showerror("Lỗi Lọc", f"{str(e)}\n{traceback.format_exc()}")
